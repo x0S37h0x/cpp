@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <iostream>
 
+#define MAX_CLIENTS 10
+
 int startWinsock(void);
 
 
@@ -10,10 +12,14 @@ int main()
 {
     long rc;
     SOCKET acceptSocket;
-    SOCKET connectedSocket;
+    //SOCKET connectedSocket;
     SOCKADDR_IN addr;
     char buf[256];
     char buf2[300];
+    FD_SET fdSet;
+    SOCKET clients[MAX_CLIENTS];
+    int i;
+
     rc=startWinsock();
     if(rc != 0)
     {
@@ -51,6 +57,7 @@ int main()
     {
         printf("Socket an port 12345 gebunden\n");
     }
+    
     rc=listen(acceptSocket, 10);
     if(rc == SOCKET_ERROR)
     {
@@ -61,6 +68,11 @@ int main()
     {
         printf("acceptsocket ist im listen modus....\n");
     }
+    for(i=0;i<MAX_CLIENTS; i++)
+    {
+        clients[i] = INVALID_SOCKET;
+    }
+    /*
     connectedSocket = accept(acceptSocket, NULL, NULL);
     if(connectedSocket == INVALID_SOCKET)
     {
@@ -93,7 +105,66 @@ int main()
     closesocket(acceptSocket);
     closesocket(connectedSocket);
     WSACleanup();
-    return 0;
+    */
+   while(1)
+   {
+        FD_ZERO(&fdSet);
+        FD_SET(acceptSocket, &fdSet);
+        for(i=0; i< MAX_CLIENTS; i++)
+        {
+            if(clients[i] != INVALID_SOCKET)
+            {
+                FD_SET(clients[i], &fdSet);
+            }
+        }
+
+  
+    rc=select(0,&fdSet,NULL, NULL, NULL);
+    if(rc == SOCKET_ERROR)
+    {
+        printf("Fehler: select, fehler code: %d\n", WSAGetLastError());
+        return 1;
+    }
+   
+    if(FD_ISSET(acceptSocket, &fdSet))
+    {
+        for(i=0;i<MAX_CLIENTS; i++)
+        {
+            if(clients[i] == INVALID_SOCKET)
+            {
+                clients[i] = accept(acceptSocket, NULL, NULL);
+                printf("Neuen Client angenommen (%d)\n", i);
+                break;
+            }
+        }
+    }
+    for (i=0; i < MAX_CLIENTS; i++)
+    {
+        if(clients[i] == INVALID_SOCKET)
+        {
+            continue;
+        }
+        if(FD_ISSET(clients[i], &fdSet))
+        {
+            rc = recv(clients[i], buf, 256, 0);
+            if(rc == 0 || rc == SOCKET_ERROR)
+            {
+                printf("Client %d hat die Verbindung geschlossen\n", i);
+                closesocket(clients[i]);
+                clients[i] = INVALID_SOCKET;
+            }
+            else
+            {
+                buf[rc] = '\0';
+                printf("Client %d hat folgendes gesandt : %s\n", i, buf);
+                sprintf(buf2, "Du mich auch %s\n",buf);
+                send(clients[i], buf2, (int)strlen(buf2), 0);       
+            }
+        
+        }
+    }
+    
+ }
 
 }
 
